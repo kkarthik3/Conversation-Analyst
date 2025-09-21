@@ -30,7 +30,7 @@ prompt = PromptTemplate(
     
     1. Company name
     2. Conference call date
-    3. Management participants (with their names and designations) Include all even Moderator
+    3. Management participants (with their names and designations)
 
     Text: {text}
     
@@ -78,6 +78,6 @@ def meta_data(docs) :
         "text": docs[0].page_content + docs[1].page_content
     })
 
-    # result = result.model_dump_json(indent=2)
+    result = result.model_dump_json(indent=2)
 
-    return result
+    return json.loads(result)

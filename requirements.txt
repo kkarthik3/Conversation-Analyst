@@ -1,0 +1,12 @@
+faiss_cpu==1.12.0
+fitz==0.0.1.dev2
+langchain==0.3.27
+langchain_community==0.3.29
+langchain_core==0.3.76
+langchain_groq==0.3.8
+langchain_huggingface==0.3.1
+langchain_text_splitters==0.3.11
+pydantic==2.11.9
+python-dotenv==1.1.1
+streamlit==1.49.1
+streamlit_option_menu==0.4.0

@@ -1,8 +1,15 @@
 import streamlit as st
-from utils.doc_parser import file_load
+from utils.doc_parser import file_load, Pattern_extract,split_docs_into_sections, group_by_pattern
 from utils.metadata import meta_data
 import os
 from streamlit_option_menu import option_menu
+from utils.create_topics import extract_topics
+from utils.create_summary import summarizer
+from concurrent.futures import ThreadPoolExecutor
+from api.embedding import create_store
+from utils.rag import rag_pipeline
+
+
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -10,6 +17,7 @@ st.set_page_config(
     layout="wide"
 )
 
+executor = ThreadPoolExecutor(max_workers=2)
 
 if "data" not in st.session_state:
     st.session_state["data"] = "Q2FY24_LaurusLabs_EarningsCallTranscript.pdf"
@@ -20,25 +28,35 @@ if "docs" not in st.session_state:
 if "load_flag" not in st.session_state:
     st.session_state.load_flag = False
 
+if "remarks_topics" not in st.session_state:
+    st.session_state.remarks_topics = {"topics":[]}
+
+if "QA_topics" not in st.session_state:
+    st.session_state.QA_topics= {"topics":[]}
+
+if "remarks" not in st.session_state:
+    st.session_state.remarks =[]
+
 
 upload_folder = "temp_uploads"
 os.makedirs(upload_folder, exist_ok=True)
     
-st.title("Earnings Call Analyzer")
-st.markdown("AI-powered transcript analysis with topic extraction and summarization")
-
-st.header("Get Started")
-st.markdown("Choose an option to begin analyzing an earnings call transcript:")
 
 
-option = option_menu(None, ["Load Data", "Visual Analysis", 'Words Distribution',"Reviews Authenticity","Topic Modelling"],
-                     icons=['upload', "images", 'alphabet',"fingerprint","diagram-3"],
+option = option_menu(None, ["Load Data", "Opening Remarks", 'Q&A Session',"AI Assistant"],
+                     icons=['upload', "journals", 'patch-question',"robot"],
                      menu_icon="cast", default_index=0, orientation="horizontal",)
 
 def meta(docs):
     return meta_data(docs)
 
 if option == "Load Data":
+    st.title("Earnings Call Analyzer")
+    st.markdown("AI-powered transcript analysis with topic extraction and summarization")
+
+    st.header("Get Started")
+    st.markdown("Choose an option to begin analyzing an earnings call transcript:")
+
     # Show columns only if data hasn't been loaded yet
     if st.session_state.load_flag == False:
         col1, col2 = st.columns(2)
@@ -96,9 +114,9 @@ if option == "Load Data":
         with col1:
             st.markdown(
                 f"""
-                <div style="padding: 20px; border-radius: 10px; background-color: #2e3b4d; text-align: center;">
+                <div style="padding: 20px; border-radius: 10px; background-color: #2e3b4d; text-align: center; margin-right: 10px;">
                     <h3 style="color: #ffffff;">Company</h3>
-                    <p style="color: #cccccc; font-size: 24px;">{meta_info.company_name}</p>
+                    <p style="color: #cccccc; font-size: 24px;">{meta_info["company_name"]}</p>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -108,9 +126,9 @@ if option == "Load Data":
         with col2:
             st.markdown(
                 f"""
-                <div style="padding: 20px; border-radius: 10px; background-color: #2e3b4d; text-align: center;">
+                <div style="padding: 20px; border-radius: 10px; background-color: #2e3b4d; text-align: center; margin-right: 10px;">
                     <h3 style="color: #ffffff;">Call Date</h3>
-                    <p style="color: #cccccc; font-size: 24px;">{meta_info.conference_call_date}</p>
+                    <p style="color: #cccccc; font-size: 24px;">{meta_info["conference_call_date"]}</p>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -127,3 +145,147 @@ if option == "Load Data":
                 """,
                 unsafe_allow_html=True
             )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.header("Content overview")
+        particpants = [participant['name'] for participant in meta_info['management_participants']]
+        st.session_state.pattern = Pattern_extract(docs = st.session_state.docs, management=particpants)
+        st.session_state.remarks, st.session_state.QA = split_docs_into_sections(st.session_state.pattern)
+
+        executor.submit(create_store(st.session_state.remarks + st.session_state.QA)) ##Pdf Loading for RAG
+
+        col1,col2 = st.columns(2)
+        with col1:
+            st.markdown(
+                f"""
+                <div style="padding: 20px; border-radius: 10px; background-color: #2e3b4d; text-align: center;">
+                    <h3 style="color: #ffffff;">Opening Remarks</h3>
+                    <p style="color: #cccccc; font-size: 24px;">{len(st.session_state.remarks)} Chunks</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        with col2:
+            st.markdown(
+                f"""
+                <div style="padding: 20px; border-radius: 10px; background-color: #2e3b4d; text-align: center;">
+                    <h3 style="color: #ffffff;">Q&A Session</h3>
+                    <p style="color: #cccccc; font-size: 24px;">{len(st.session_state.QA)} Chunks</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
+if option == "Opening Remarks":
+    st.header("Opening Remarks")
+    st.divider()
+    tab1, tab2, tab3 = st.tabs(["View Chunks", "Generate Topics", "Create Summary"])
+
+    with tab1:
+        st.subheader("Raw Text who said What")
+
+        for index, remarks in enumerate(st.session_state.remarks):
+            with st.expander(f"C{index+1}  {remarks.metadata["speaker"]}"):
+                st.markdown(remarks.page_content)
+
+    with tab2:
+
+        if st.button("Click here to Genetate Topics") or st.session_state.remarks_topics["topics"]:
+            with st.spinner("Please wait Untill Topic is loaded"):
+                st.session_state.remarks_topics = extract_topics(st.session_state.remarks)
+            for index,topic in enumerate(st.session_state.remarks_topics["topics"]):
+                st.success(f"Topic {index+1}  -->  {topic}")
+
+    with tab3:
+        if st.session_state.remarks_topics["topics"] : 
+            st.subheader("Summaries for Genrated topics")
+
+            if st.session_state.remarks_topics["topics"]:
+                @st.fragment
+                def topic_summary():
+                    with st.container(border=True):
+                        selected_options = []
+                        for option in st.session_state.remarks_topics["topics"]:
+                            if st.checkbox(option):
+                                selected_options.append(option)
+                        submit_remark = st.button("Click Proceed To generate summary")
+
+                    if submit_remark:
+                        st.success(summarizer(input= st.session_state.remarks,
+                                              topics=selected_options))
+                
+                topic_summary()
+
+        else:
+            st.warning("Please Genarate topics first")
+
+            
+if option == "Q&A Session":
+    st.header("Q&A Session")
+    st.divider()
+    tab1, tab2, tab3 = st.tabs(["View Chunks", "Generate Topics", "Create Summary"])
+    qa_batches = group_by_pattern(st.session_state.QA)
+
+
+    with tab1:
+        st.subheader("Batched Q&A")
+
+        for idx, (questions, answers) in enumerate(qa_batches, start=1):
+            with st.container():
+                with st.expander(f"## Question {idx}"):
+                    if questions:
+                        st.markdown("**Questions:**")
+                        for q in questions:
+                            st.markdown(f"- *{q.metadata['speaker']}*: {q.page_content}")
+
+                    if answers:
+                        st.markdown("**Answers:**")
+                        for a in answers:
+                            st.markdown(f"- *{a.metadata['speaker']}*: {a.page_content}")
+
+    with tab2:
+
+        if st.button("Click here to Genetate Topics") or st.session_state.QA_topics["topics"]:
+            with st.spinner("Please wait Untill Topic is loaded"):
+                st.session_state.QA_topics = extract_topics(st.session_state.QA)
+            for index,topic in enumerate(st.session_state.QA_topics["topics"]):
+                st.success(f"Topic {index+1}  -->  {topic}")
+
+    with tab3:
+        if st.session_state.QA_topics["topics"] : 
+            st.subheader("Summaries for Genrated topics")
+
+            if st.session_state.QA_topics["topics"]:
+                @st.fragment
+                def topic_summary():
+                    with st.container(border=True):
+                        selected_options = []
+                        for option in st.session_state.QA_topics["topics"]:
+                            if st.checkbox(option):
+                                selected_options.append(option)
+                        submit_remark = st.button("Click Proceed To generate summary")
+
+                    if submit_remark:
+                        st.success(summarizer(input= st.session_state.remarks,
+                                              topics=selected_options))
+                
+                topic_summary()
+
+        else:
+            st.warning("Please Genarate topics first")
+
+if option=="AI Assistant":
+    if st.session_state.docs:
+        if input:= st.chat_input("Ask me a question"):
+            with st.chat_message("user"):
+                st.markdown(input)
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    result, details = rag_pipeline(input)
+                    st.markdown(result)
+                    st.markdown(details)
+
+    else:
+        st.warning("Load your Docs first")
