@@ -285,7 +285,17 @@ if option=="AI Assistant":
                 with st.spinner("Thinking..."):
                     result, details = rag_pipeline(input)
                     st.markdown(result)
-                    st.markdown(details)
 
+                    with st.expander("Metadata"):
+                        for doc, score in details:
+                            rag_meta = doc.metadata
+                            line = (
+                                f"Speaker: {rag_meta.get('speaker', 'N/A')} | "
+                                f"Type: {rag_meta.get('type', 'N/A')} | "
+                                f"Role: {rag_meta.get('role', 'N/A')} | "
+                                f"Similarity: {score:.4f} |\n"
+                                f"Content: {doc.page_content[:100]}.......\n"
+                            )
+                            st.markdown(line)
     else:
         st.warning("Load your Docs first")
