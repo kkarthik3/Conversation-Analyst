@@ -170,6 +170,40 @@ if option == "Load Data":
                 unsafe_allow_html=True
             )
 
+        # ---- Management Participants ----
+        if meta_info.get("management_participants"):
+            st.subheader("Management Participants")
+
+            # Display participants in a 2-column grid for better alignment
+            participants = meta_info.get("management_participants")
+            cols = st.columns(2)
+            
+            for idx, p in enumerate(participants):
+                col = cols[idx % 2]  # Alternate between the 2 columns
+                if p.get("name") and p.get("designation"):
+                    with col:
+                        st.markdown(
+                            f"""
+                            <div style="
+                                padding:24px;
+                                margin-bottom:16px;
+                                border-radius:16px;
+                                background:linear-gradient(145deg,#2e3b4d,#3a4b63);
+                                box-shadow:0 6px 12px rgba(0,0,0,0.25);
+                                text-align:center;">
+                                <p style="color:#f0f0f0;font-size:20px;font-weight:600;margin:0;">
+                                    {p["name"]}
+                                </p>
+                                <p style="color:#d0d0d0;font-size:16px;font-weight:400;margin:0;">
+                                    {p["designation"]}
+                                </p>
+                            </div>
+                            """,
+                            unsafe_allow_html=True
+                        )
+        else:
+           st.warning("No management participants found.")
+
         st.markdown("<br>", unsafe_allow_html=True)
         st.header("Content overview")
         
